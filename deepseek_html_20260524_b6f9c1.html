@@ -13,15 +13,32 @@
 
         body {
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            /* Фоновое изображение bg.png */
+            background: url('bg.png') no-repeat center center fixed;
+            background-size: cover;
             color: #fff;
             padding: 20px;
             min-height: 100vh;
+            position: relative;
+        }
+
+        /* Затемнение фона для читаемости текста */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: -1;
         }
 
         .container {
             max-width: 800px;
             margin: 0 auto;
+            position: relative;
+            z-index: 1;
         }
 
         h1 {
@@ -35,8 +52,8 @@
         }
 
         .card {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
             border-radius: 24px;
             padding: 20px;
             margin-bottom: 20px;
@@ -89,7 +106,7 @@
         }
 
         .result {
-            background: #0f3460;
+            background: rgba(15, 52, 96, 0.9);
             border-radius: 20px;
             padding: 20px;
             margin-top: 20px;
@@ -133,6 +150,7 @@
         .back-btn {
             background: #2c3e50;
             margin-top: 15px;
+            width: 100%;
         }
 
         .movie-item {
@@ -156,7 +174,7 @@
 <body>
 <div class="container">
     <h1>
-        Кино Эксперт типо
+        🎬 Кино Эксперт
     </h1>
 
     <div class="card">
@@ -184,7 +202,6 @@
     // ============================================================
     // 🔧 НАСТРОЙКИ (ВСТАВЬ СВОЙ API-КЛЮЧ)
     // ============================================================
-    // Получить ключ: https://kinopoiskapiunofficial.tech
     const KINOPOISK_API_KEY = "d886f1e4-1adb-4862-854e-60657f98a636";
     const API_URL = "https://kinopoiskapiunofficial.tech/api";
 
@@ -193,31 +210,38 @@
         "Content-Type": "application/json"
     };
 
-    // Список жанров
     const GENRES = {
         "боевик": 2, "комедия": 3, "драма": 4, "фантастика": 7,
         "ужасы": 5, "триллер": 6, "мелодрама": 8, "детектив": 9,
         "приключения": 10, "аниме": 34
     };
 
-    // Telegram Web App инициализация
-    let tg = window.Telegram?.WebApp;
-    if (tg) {
-        tg.expand();  // Разворачиваем на весь экран
-        tg.ready();
+    // Telegram Web App инициализация (без ошибок, если не в Telegram)
+    let tg = null;
+    try {
+        if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+            tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.ready();
+        }
+    } catch(e) {
+        console.log("Telegram Web App не обнаружен");
     }
 
     // ============================================================
-    // 📦 ФУНКЦИИ ЗАПРОСОВ К API
+    // ФУНКЦИИ ЗАПРОСОВ К API
     // ============================================================
 
     async function apiRequest(endpoint, params = {}) {
-        const url = new URL(`${API_URL}/${endpoint}`);
-        Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-        
         try {
-            const response = await fetch(url, { headers });
-            if (!response.ok) return null;
+            const url = new URL(`${API_URL}/${endpoint}`);
+            Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+            
+            const response = await fetch(url.toString(), { headers });
+            if (!response.ok) {
+                console.error(`API ошибка: ${response.status}`);
+                return null;
+            }
             return await response.json();
         } catch (error) {
             console.error("Ошибка API:", error);
@@ -240,7 +264,7 @@
     }
 
     async function getMoviesByYear(year) {
-        const data = await apiRequest("v2.2/films", { order: "RATING", type: "ALL", year, page: 1 });
+        const data = await apiRequest("v2.2/films", { order: "RATING", type: "ALL", year: year, page: 1 });
         return data?.items || [];
     }
 
@@ -250,33 +274,43 @@
     }
 
     // ============================================================
-    // 🎨 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
     // ============================================================
 
     function showLoading() {
-        document.getElementById("loading").style.display = "block";
-        document.getElementById("result").style.display = "none";
-        document.getElementById("result").innerHTML = "";
+        const loadingEl = document.getElementById("loading");
+        const resultEl = document.getElementById("result");
+        if (loadingEl) loadingEl.style.display = "block";
+        if (resultEl) {
+            resultEl.style.display = "none";
+            resultEl.innerHTML = "";
+        }
     }
 
     function hideLoading() {
-        document.getElementById("loading").style.display = "none";
+        const loadingEl = document.getElementById("loading");
+        if (loadingEl) loadingEl.style.display = "none";
     }
 
     function showResult(html) {
         const resultDiv = document.getElementById("result");
-        resultDiv.innerHTML = html;
-        resultDiv.style.display = "block";
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+            resultDiv.style.display = "block";
+        }
         hideLoading();
-        if (tg) tg.HapticFeedback.impactOccurred("light");
+        try {
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+        } catch(e) {}
     }
 
     function clearPanel() {
-        document.getElementById("dynamicPanel").innerHTML = "";
+        const panel = document.getElementById("dynamicPanel");
+        if (panel) panel.innerHTML = "";
     }
 
     // ============================================================
-    // 🎬 ФУНКЦИИ ИНТЕРФЕЙСА
+    // ФУНКЦИИ ИНТЕРФЕЙСА
     // ============================================================
 
     function showGenres() {
@@ -324,7 +358,8 @@
     }
 
     async function searchByYear() {
-        const year = document.getElementById("yearInput")?.value;
+        const yearInput = document.getElementById("yearInput");
+        const year = yearInput?.value;
         if (!year) return;
         showLoading();
         let movies = await getMoviesByYear(parseInt(year));
@@ -358,7 +393,8 @@
     }
 
     async function searchByName() {
-        const query = document.getElementById("searchInput")?.value;
+        const searchInput = document.getElementById("searchInput");
+        const query = searchInput?.value;
         if (!query) return;
         showLoading();
         let movies = await searchMovies(query);
@@ -407,8 +443,8 @@
             showResult("<p>❌ Не удалось найти случайный фильм.</p>");
             return;
         }
-        const randomMovie = movies[Math.floor(Math.random() * movies.length)];
-        await showDetails(randomMovie.filmId, true);
+        const randomMovieObj = movies[Math.floor(Math.random() * movies.length)];
+        await showDetails(randomMovieObj.filmId, true);
     }
 
     async function showDetails(movieId, isRandom = false) {
@@ -426,27 +462,33 @@
         const poster = movie.posterUrl;
 
         let html = `
-            <h2>${name} (${year})</h2>
+            <h3>${name} (${year})</h3>
             <p>⭐ Рейтинг: ${rating}/10</p>
             <p>🎭 Жанр: ${genres}</p>
             <p>📖 ${description}</p>
         `;
         if (poster) {
-            html += `<img src="${poster}" alt="${name}">`;
+            html += `<img src="${poster}" alt="${name}" style="max-width:100%; border-radius:16px;">`;
         }
         html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
         showResult(html);
     }
 
     function resetPanel() {
-        document.getElementById("dynamicPanel").innerHTML = '<p style="text-align: center; opacity: 0.8;">👇 Выбери действие выше</p>';
-        document.getElementById("result").style.display = "none";
-        document.getElementById("result").innerHTML = "";
+        const panel = document.getElementById("dynamicPanel");
+        const resultDiv = document.getElementById("result");
+        if (panel) {
+            panel.innerHTML = '<p style="text-align: center; opacity: 0.8;">👇 Выбери действие выше</p>';
+        }
+        if (resultDiv) {
+            resultDiv.style.display = "none";
+            resultDiv.innerHTML = "";
+        }
         hideLoading();
     }
 </script>
 
-<!-- Подключение Telegram Web App (обязательно для мини-приложения) -->
+<!-- Подключение Telegram Web App (опционально, для мини-приложения) -->
 <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
 </body>
 </html>
