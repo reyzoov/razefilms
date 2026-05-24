@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>КиноЭксперт — помощник выбора фильма</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #e94560;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            flex: 1;
+            min-width: 130px;
+        }
+
+        button:hover {
+            background: #ff6b8b;
+            transform: scale(0.97);
+        }
+
+        .genre-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .genre-btn {
+            background: #0f3460;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 14px;
+        }
+
+        .genre-btn:hover {
+            background: #1a4a7a;
+        }
+
+        .result {
+            background: #0f3460;
+            border-radius: 20px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .result img {
+            max-width: 100%;
+            border-radius: 16px;
+            margin-top: 15px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .year-input, .search-input {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            border: none;
+            font-size: 16px;
+            background: #fff;
+            color: #333;
+        }
+
+        .small-btn {
+            background: #e94560;
+            padding: 12px 20px;
+            min-width: auto;
+        }
+
+        .back-btn {
+            background: #2c3e50;
+            margin-top: 15px;
+        }
+
+        .movie-item {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+            transition: 0.1s;
+        }
+        .movie-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>
+        🎬 КиноЭксперт
+    </h1>
+
+    <div class="card">
+        <div class="buttons">
+            <button onclick="showGenres()">🔍 По жанру</button>
+            <button onclick="showYearPicker()">📅 По году</button>
+            <button onclick="randomMovie()">🎲 Случайный</button>
+            <button onclick="showSearch()">📖 По названию</button>
+            <button onclick="showTop()">🏆 Топ-250</button>
+        </div>
+
+        <div id="dynamicPanel">
+            <p style="text-align: center; opacity: 0.8;">👇 Выбери действие выше</p>
+        </div>
+
+        <div id="result" class="result"></div>
+        <div id="loading" class="loading">⏳ Загрузка... Подождите</div>
+    </div>
+    <footer>
+        🎬 Данные предоставлены Kinopoisk API Unofficial
+    </footer>
+</div>
+
+<script>
+    // ============================================================
+    // 🔧 НАСТРОЙКИ (ВСТАВЬ СВОЙ API-КЛЮЧ)
+    // ============================================================
+    // Получить ключ: https://kinopoiskapiunofficial.tech
+    const KINOPOISK_API_KEY = "СЮДА_ВСТАВЬ_ТВОЙ_API_КЛЮЧ";
+    const API_URL = "https://kinopoiskapiunofficial.tech/api";
+
+    const headers = {
+        "X-API-KEY": KINOPOISK_API_KEY,
+        "Content-Type": "application/json"
+    };
+
+    // Список жанров
+    const GENRES = {
+        "боевик": 2, "комедия": 3, "драма": 4, "фантастика": 7,
+        "ужасы": 5, "триллер": 6, "мелодрама": 8, "детектив": 9,
+        "приключения": 10, "аниме": 34
+    };
+
+    // Telegram Web App инициализация
+    let tg = window.Telegram?.WebApp;
+    if (tg) {
+        tg.expand();  // Разворачиваем на весь экран
+        tg.ready();
+    }
+
+    // ============================================================
+    // 📦 ФУНКЦИИ ЗАПРОСОВ К API
+    // ============================================================
+
+    async function apiRequest(endpoint, params = {}) {
+        const url = new URL(`${API_URL}/${endpoint}`);
+        Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+        
+        try {
+            const response = await fetch(url, { headers });
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error("Ошибка API:", error);
+            return null;
+        }
+    }
+
+    async function searchMovies(query) {
+        const data = await apiRequest("v2.1/films/search-by-keyword", { keyword: query, page: 1 });
+        return data?.films || [];
+    }
+
+    async function getMovieDetails(movieId) {
+        return await apiRequest(`v2.2/films/${movieId}`);
+    }
+
+    async function getTopMovies() {
+        const data = await apiRequest("v2.2/films/top", { type: "TOP_250_BEST_FILMS" });
+        return data?.films || [];
+    }
+
+    async function getMoviesByYear(year) {
+        const data = await apiRequest("v2.2/films", { order: "RATING", type: "ALL", year, page: 1 });
+        return data?.items || [];
+    }
+
+    async function getMoviesByGenre(genreId) {
+        const data = await apiRequest("v2.2/films", { order: "RATING", type: "ALL", genres: genreId, page: 1 });
+        return data?.items || [];
+    }
+
+    // ============================================================
+    // 🎨 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    // ============================================================
+
+    function showLoading() {
+        document.getElementById("loading").style.display = "block";
+        document.getElementById("result").style.display = "none";
+        document.getElementById("result").innerHTML = "";
+    }
+
+    function hideLoading() {
+        document.getElementById("loading").style.display = "none";
+    }
+
+    function showResult(html) {
+        const resultDiv = document.getElementById("result");
+        resultDiv.innerHTML = html;
+        resultDiv.style.display = "block";
+        hideLoading();
+        if (tg) tg.HapticFeedback.impactOccurred("light");
+    }
+
+    function clearPanel() {
+        document.getElementById("dynamicPanel").innerHTML = "";
+    }
+
+    // ============================================================
+    // 🎬 ФУНКЦИИ ИНТЕРФЕЙСА
+    // ============================================================
+
+    function showGenres() {
+        clearPanel();
+        let html = '<div class="genre-grid">';
+        for (let name in GENRES) {
+            html += `<button class="genre-btn" onclick="selectGenre('${name}')">${name.charAt(0).toUpperCase() + name.slice(1)}</button>`;
+        }
+        html += '</div><button class="back-btn" onclick="resetPanel()">🔙 Назад</button>';
+        document.getElementById("dynamicPanel").innerHTML = html;
+    }
+
+    async function selectGenre(genreName) {
+        showLoading();
+        const genreId = GENRES[genreName];
+        let movies = await getMoviesByGenre(genreId);
+        if (!movies || movies.length === 0) {
+            showResult("<p>❌ Фильмы не найдены.</p>");
+            return;
+        }
+        movies = movies.sort(() => 0.5 - Math.random()).slice(0, 5);
+        let html = `<h3>🎭 Фильмы в жанре <b>${genreName.toUpperCase()}</b>:</h3>`;
+        for (let movie of movies) {
+            const name = movie.nameRu || movie.nameEn || "Без названия";
+            const year = movie.year || "?";
+            const rating = movie.rating || "?";
+            html += `<div class="movie-item" onclick="showDetails(${movie.filmId})">
+                        🎬 <b>${name}</b> (${year}) ⭐ ${rating}
+                     </div>`;
+        }
+        html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
+        showResult(html);
+    }
+
+    function showYearPicker() {
+        clearPanel();
+        const html = `
+            <div class="year-input">
+                <input type="number" id="yearInput" placeholder="Введите год (например 1999)">
+                <button class="small-btn" onclick="searchByYear()">Найти</button>
+            </div>
+            <button class="back-btn" onclick="resetPanel()">🔙 Назад</button>
+        `;
+        document.getElementById("dynamicPanel").innerHTML = html;
+    }
+
+    async function searchByYear() {
+        const year = document.getElementById("yearInput")?.value;
+        if (!year) return;
+        showLoading();
+        let movies = await getMoviesByYear(parseInt(year));
+        if (!movies || movies.length === 0) {
+            showResult(`<p>❌ Фильмы за ${year} год не найдены.</p>`);
+            return;
+        }
+        movies = movies.sort(() => 0.5 - Math.random()).slice(0, 5);
+        let html = `<h3>📅 Фильмы ${year} года:</h3>`;
+        for (let movie of movies) {
+            const name = movie.nameRu || "Без названия";
+            const rating = movie.rating || "?";
+            html += `<div class="movie-item" onclick="showDetails(${movie.filmId})">
+                        🎬 <b>${name}</b> ⭐ ${rating}
+                     </div>`;
+        }
+        html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
+        showResult(html);
+    }
+
+    function showSearch() {
+        clearPanel();
+        const html = `
+            <div class="search-input">
+                <input type="text" id="searchInput" placeholder="Введите название фильма">
+                <button class="small-btn" onclick="searchByName()">Найти</button>
+            </div>
+            <button class="back-btn" onclick="resetPanel()">🔙 Назад</button>
+        `;
+        document.getElementById("dynamicPanel").innerHTML = html;
+    }
+
+    async function searchByName() {
+        const query = document.getElementById("searchInput")?.value;
+        if (!query) return;
+        showLoading();
+        let movies = await searchMovies(query);
+        if (!movies || movies.length === 0) {
+            showResult(`<p>❌ Фильм "${query}" не найден.</p>`);
+            return;
+        }
+        let html = `<h3>📖 Результаты поиска:</h3>`;
+        for (let movie of movies.slice(0, 5)) {
+            const name = movie.nameRu || movie.nameEn || "Без названия";
+            const year = movie.year || "?";
+            html += `<div class="movie-item" onclick="showDetails(${movie.filmId})">
+                        🎬 <b>${name}</b> (${year})
+                     </div>`;
+        }
+        html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
+        showResult(html);
+    }
+
+    async function showTop() {
+        showLoading();
+        let movies = await getTopMovies();
+        if (!movies || movies.length === 0) {
+            showResult("<p>❌ Не удалось загрузить топ фильмов.</p>");
+            return;
+        }
+        let html = "<h3>🏆 Топ-250 лучших фильмов:</h3>";
+        for (let i = 0; i < Math.min(10, movies.length); i++) {
+            const movie = movies[i];
+            const name = movie.nameRu || movie.nameEn || "Без названия";
+            const year = movie.year || "?";
+            const rating = movie.rating || "?";
+            html += `<div class="movie-item" onclick="showDetails(${movie.filmId})">
+                        ${i+1}. <b>${name}</b> (${year}) ⭐ ${rating}
+                     </div>`;
+        }
+        html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
+        showResult(html);
+    }
+
+    async function randomMovie() {
+        showLoading();
+        const year = Math.floor(Math.random() * (2024 - 1990 + 1) + 1990);
+        let movies = await getMoviesByYear(year);
+        if (!movies || movies.length === 0) {
+            showResult("<p>❌ Не удалось найти случайный фильм.</p>");
+            return;
+        }
+        const randomMovie = movies[Math.floor(Math.random() * movies.length)];
+        await showDetails(randomMovie.filmId, true);
+    }
+
+    async function showDetails(movieId, isRandom = false) {
+        showLoading();
+        const movie = await getMovieDetails(movieId);
+        if (!movie) {
+            showResult("<p>❌ Информация о фильме не найдена.</p>");
+            return;
+        }
+        const name = movie.nameRu || movie.nameEn || "Без названия";
+        const year = movie.year || "?";
+        const rating = movie.ratingImdb || movie.ratingKinopoisk || "?";
+        const description = movie.description || "Описание отсутствует";
+        const genres = movie.genres?.map(g => g.genre).join(", ") || "Не указан";
+        const poster = movie.posterUrl;
+
+        let html = `
+            <h2>${name} (${year})</h2>
+            <p>⭐ Рейтинг: ${rating}/10</p>
+            <p>🎭 Жанр: ${genres}</p>
+            <p>📖 ${description}</p>
+        `;
+        if (poster) {
+            html += `<img src="${poster}" alt="${name}">`;
+        }
+        html += `<button class="back-btn" onclick="resetPanel()">🔙 Назад</button>`;
+        showResult(html);
+    }
+
+    function resetPanel() {
+        document.getElementById("dynamicPanel").innerHTML = '<p style="text-align: center; opacity: 0.8;">👇 Выбери действие выше</p>';
+        document.getElementById("result").style.display = "none";
+        document.getElementById("result").innerHTML = "";
+        hideLoading();
+    }
+</script>
+
+<!-- Подключение Telegram Web App (обязательно для мини-приложения) -->
+<script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+</body>
+</html>
